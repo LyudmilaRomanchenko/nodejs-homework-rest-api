@@ -3,8 +3,9 @@ const router = express.Router();
 const { NotFound, BadRequest } = require("http-errors");
 // const createError = require('http-errors');
 const { Contact } = require("../../model");
-console.log(Contact);
+// console.log(Contact);
 const { JoiSchema } = require("../../model/contact");
+const { authenticate } = require("../../middlewares");
 
 router.get("/", async (req, res, next) => {
   try {
@@ -33,7 +34,7 @@ router.get("/:contactId", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", authenticate, async (req, res, next) => {
   try {
     const { error } = JoiSchema.validate(req.body);
     if (error) {
