@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const { BadRequest, Conflict, Unauthorized } = require("http-errors");
+
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User } = require("../../model");
 const { JoiSchema } = require("../../model/user");
+const { authenticate } = require("../../middlewares");
 const { SECRET_KEY } = process.env;
 
 router.post("/signup", async (req, res, next) => {
@@ -66,7 +68,7 @@ router.post("/login", async (req, res, next) => {
       id: user._id,
     };
 
-    const token = jwt.sign(payload, SECRET_KEY, { expiresIn: "1h" });
+    const token = jwt.sign(payload, SECRET_KEY, { expiresIn: "8h" });
     await User.findByIdAndUpdate(_id, { token });
     res.json({
       token,
@@ -79,5 +81,21 @@ router.post("/login", async (req, res, next) => {
     next(error);
   }
 });
+
+router.get("/logout", authenticate, async (req, res) => {
+  const {_id} = req.user;
+  await User.findByIdAndUpdate(_id, {token: null}); 
+  res.status(204).send();
+})
+
+router.get("/current", authenticate, async (req, res) => {
+  const {email, subscription} = req.user;
+  res.json({
+    user: {
+      email,
+      subscription
+    }
+  })
+})
 
 module.exports = router;
