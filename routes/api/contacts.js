@@ -26,10 +26,6 @@ router.get("/", authenticate, async (req, res, next) => {
     } else {
       res.json(contacts);
     }
-
-
-
-    // res.json(contacts);
   } catch (error) {
     next(error);
   }

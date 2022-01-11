@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { BadRequest, Conflict, Unauthorized } = require("http-errors");
+const { BadRequest, Conflict, Unauthorized, NotFound } = require("http-errors");
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -96,6 +96,36 @@ router.get("/current", authenticate, async (req, res) => {
       subscription
     }
   })
+})
+
+router.patch("/", authenticate, async (req, res, next) => {
+  try {
+    const { subscription } = req.body;
+
+    if (subscription === undefined) {
+      throw new BadRequest("missing field subscription");
+    }
+
+    if (subscription === "starter" || subscription === "pro" || subscription === "business") {
+      const {_id} = req.user;
+      const updateUser = await User.findByIdAndUpdate(_id,
+        { subscription },
+        {
+          new: subscription,
+        });
+
+      if (!updateUser) {
+        throw new NotFound();
+      }
+
+      res.json(updateUser);
+    } else {throw new BadRequest("subscription must be 'starter', 'pro' or 'business'");}
+
+    
+  } catch (error) {
+    next(error);
+  }
+
 })
 
 module.exports = router;
