@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { BadRequest, Conflict, Unauthorized, NotFound } = require("http-errors");
+const Jimp = require('jimp');
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -144,20 +145,34 @@ router.patch("/", authenticate, async (req, res, next) => {
 });
 
 router.patch("/avatars", authenticate, upload.single("avatar"), async (req, res, next) => {
-  const {_id} = req.user;
-  const {path: tempUpload, filename} = req.file;
-  const [extension] = filename.split(".").reverse();
-  const newFileName = `${_id}.${extension}`;
-  const avatarsDir = path.join(__dirname, "../../", "public", "avatars");
+  try {
+    const {_id} = req.user;
+    const {path: tempUpload, filename} = req.file; 
 
-  const fileUpload = path.join(avatarsDir, newFileName);
-  await fs.rename(tempUpload, fileUpload);
-  const avatarURL = path.join("avatars", newFileName);
-  await  User.findByIdAndUpdate(_id, {avatarURL}, {new: true});
-  res.json({avatarURL});
-  //////////////
-  // await fs.unlink(tempUpload);
+    await Jimp.read(tempUpload)
+      .then(avatar => {
+        return avatar
+          .resize(250, 250)
+          .write(tempUpload); 
+      })
+      .catch(err => {
+        throw err;
+    });
 
+    const [extension] = filename.split(".").reverse();
+    const newFileName = `${_id}.${extension}`;
+    const avatarsDir = path.join(__dirname, "../../", "public", "avatars");
+
+    const fileUpload = path.join(avatarsDir, newFileName);
+    await fs.rename(tempUpload, fileUpload);
+    const avatarURL = path.join("avatars", newFileName);
+    await  User.findByIdAndUpdate(_id, {avatarURL}, {new: true});
+    res.json({avatarURL});
+    
+  } catch (error) {
+    await fs.unlink(tempUpload);
+    next(error);
+  }
 })
 
 module.exports = router;
