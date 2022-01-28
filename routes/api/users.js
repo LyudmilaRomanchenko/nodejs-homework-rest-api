@@ -193,30 +193,60 @@ router.patch(
   }
 );
 
-router.get(
-  "/verify/:verificationToken",
-  authenticate,
-  async (req, res, next) => {
-    try {
-      const verificationToken = req.params;
-      const user = User.findOne(verificationToken);
-      if (!user) {
-        throw new NotFound("User not found");
-      }
-
-      const { _id } = user;
-
-      await User.findByIdAndUpdate(_id, {
-        verificationToken: null,
-        verify: true,
-      });
-
-      res.json({
-        message: "Verification successful",
-      });
-    } catch (error) {
-      next(error);
+router.post("/verify", async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      throw new BadRequest("missing required field email");
     }
+
+    const user = User.findOne({ email });
+
+    if (!user) {
+      throw new NotFound("User not found");
+    }
+
+    if (user.verify) {
+      throw new BadRequest("Verification has already been passed");
+    }
+
+    const { verificationToken } = user;
+
+    const data = {
+      to: email,
+      subject: "Подтвержденте регистрации",
+      html: `<a target="_blank" href="${SITE_NAME}/users/verify/:${verificationToken}">Подтвердить email</a>`,
+    };
+
+    await sendEmail(data);
+
+    res.json({
+      message: "Verification email sent",
+    });
+  } catch (error) {
+    next(error);
   }
-);
+});
+
+router.get("/verify/:verificationToken", async (req, res, next) => {
+  try {
+    const verificationToken = req.params;
+    const user = User.findOne(verificationToken);
+    if (!user) {
+      throw new NotFound("User not found");
+    }
+
+    const { _id } = user;
+
+    await User.findByIdAndUpdate(_id, {
+      verificationToken: null,
+      verify: true,
+    });
+    res.json({
+      message: "Verification successful",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 module.exports = router;

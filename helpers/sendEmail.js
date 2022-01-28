@@ -24,7 +24,7 @@ const sendEmail = async (data) => {
   }
 };
 
-module.exports(sendEmail);
+module.exports = sendEmail;
 
 // /////////////////
 // ============== Using meta.ua ====================
