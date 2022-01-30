@@ -1,17 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const { BadRequest, Conflict, Unauthorized, NotFound } = require("http-errors");
-const Jimp = require('jimp');
+const Jimp = require("jimp");
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
 const fs = require("fs/promises");
-const gravatar = require('gravatar');
+const gravatar = require("gravatar");
+const { nanoid } = require("nanoid");
 const { User } = require("../../model");
 const { JoiSchema } = require("../../model/user");
 const { authenticate, upload } = require("../../middlewares");
-const { SECRET_KEY } = process.env;
+const { sendEmail } = require("../../helpers");
+
+const { SECRET_KEY, SITE_NAME } = process.env;
 
 router.post("/signup", async (req, res, next) => {
   try {
@@ -25,20 +28,29 @@ router.post("/signup", async (req, res, next) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(password, salt);
+    const verificationToken = nanoid();
     const user = await User.findOne({ email });
     if (user) {
       throw new Conflict("Email in use");
     }
 
-    const avatarURL = gravatar.url(email)
+    const avatarURL = gravatar.url(email);
     console.log(avatarURL);
-    
 
     const newUser = await User.create({
       email,
       password: hashPassword,
       avatarURL,
+      verificationToken,
     });
+
+    const data = {
+      to: email,
+      subject: "Подтвержденте регистрации",
+      html: `<a target="_blank" href="${SITE_NAME}/users/verify/:${verificationToken}">Подтвердить email</a>`,
+    };
+
+    await sendEmail(data);
 
     res.status(201).json({
       user: {
@@ -64,6 +76,10 @@ router.post("/login", async (req, res, next) => {
     const user = await User.findOne({ email });
     if (!user) {
       throw loginError;
+    }
+
+    if (!user.verify) {
+      throw new Unauthorized("Email not verify");
     }
 
     const passwordCompare = await bcrypt.compare(password, user.password);
@@ -144,35 +160,93 @@ router.patch("/", authenticate, async (req, res, next) => {
   }
 });
 
-router.patch("/avatars", authenticate, upload.single("avatar"), async (req, res, next) => {
+router.patch(
+  "/avatars",
+  authenticate,
+  upload.single("avatar"),
+  async (req, res, next) => {
+    try {
+      const { _id } = req.user;
+      const { path: tempUpload, filename } = req.file;
+
+      await Jimp.read(tempUpload)
+        .then((avatar) => {
+          return avatar.resize(250, 250).write(tempUpload);
+        })
+        .catch((err) => {
+          throw err;
+        });
+
+      const [extension] = filename.split(".").reverse();
+      const newFileName = `${_id}.${extension}`;
+      const avatarsDir = path.join(__dirname, "../../", "public", "avatars");
+
+      const fileUpload = path.join(avatarsDir, newFileName);
+      await fs.rename(tempUpload, fileUpload);
+      const avatarURL = path.join("avatars", newFileName);
+      await User.findByIdAndUpdate(_id, { avatarURL }, { new: true });
+      res.json({ avatarURL });
+    } catch (error) {
+      // await fs.unlink(tempUpload);
+      next(error);
+    }
+  }
+);
+
+router.post("/verify", async (req, res, next) => {
   try {
-    const {_id} = req.user;
-    const {path: tempUpload, filename} = req.file; 
+    const { email } = req.body;
+    if (!email) {
+      throw new BadRequest("missing required field email");
+    }
 
-    await Jimp.read(tempUpload)
-      .then(avatar => {
-        return avatar
-          .resize(250, 250)
-          .write(tempUpload); 
-      })
-      .catch(err => {
-        throw err;
+    const user = User.findOne({ email });
+
+    if (!user) {
+      throw new NotFound("User not found");
+    }
+
+    if (user.verify) {
+      throw new BadRequest("Verification has already been passed");
+    }
+
+    const { verificationToken } = user;
+
+    const data = {
+      to: email,
+      subject: "Подтвержденте регистрации",
+      html: `<a target="_blank" href="${SITE_NAME}/users/verify/:${verificationToken}">Подтвердить email</a>`,
+    };
+
+    await sendEmail(data);
+
+    res.json({
+      message: "Verification email sent",
     });
-
-    const [extension] = filename.split(".").reverse();
-    const newFileName = `${_id}.${extension}`;
-    const avatarsDir = path.join(__dirname, "../../", "public", "avatars");
-
-    const fileUpload = path.join(avatarsDir, newFileName);
-    await fs.rename(tempUpload, fileUpload);
-    const avatarURL = path.join("avatars", newFileName);
-    await  User.findByIdAndUpdate(_id, {avatarURL}, {new: true});
-    res.json({avatarURL});
-    
   } catch (error) {
-    await fs.unlink(tempUpload);
     next(error);
   }
-})
+});
 
+router.get("/verify/:verificationToken", async (req, res, next) => {
+  try {
+    const verificationToken = req.params;
+    const user = User.findOne(verificationToken);
+    if (!user) {
+      throw new NotFound("User not found");
+    }
+
+    const { _id } = user;
+
+    await User.findByIdAndUpdate(_id, {
+      verificationToken: null,
+      verify: true,
+    });
+    res.json({
+      message: "Verification successful",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 module.exports = router;

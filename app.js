@@ -1,6 +1,5 @@
 const dotenv = require("dotenv");
 dotenv.config();
-// require("dotenv").config();
 
 const express = require("express");
 const logger = require("morgan");
@@ -12,11 +11,20 @@ const app = express();
 
 const formatsLogger = app.get("env") === "development" ? "dev" : "short";
 
+// ///////////////
+// const { sendEmail } = require("./helpers/sendEmail");
+// const data = {
+//   to: "socoj75776@icesilo.com",
+//   subject: "Заявка",
+//   html: "<p>Заявка принята</p>",
+// };
+// sendEmail(data);
+// //////////
+
 app.use(logger(formatsLogger));
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
-
 
 app.use("/users", usersRouter);
 app.use("/api/contacts", contactsRouter);
